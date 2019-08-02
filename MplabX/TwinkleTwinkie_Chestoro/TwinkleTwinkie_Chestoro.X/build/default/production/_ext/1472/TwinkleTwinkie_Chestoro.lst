@@ -1,0 +1,2220 @@
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ;#######################################################################################################
+                            ##################################################
+                      00002 ;Copyright (c) 2019 Peter Shabino
+                      00003 ;
+                      00004 ;Permission is hereby granted, free of charge, to any person obtaining a copy of this hardware, software
+                            , and associated documentation files 
+                      00005 ;(the "Product"), to deal in the Product without restriction, including without limitation the rights to
+                             use, copy, modify, merge, publish, 
+                      00006 ;distribute, sublicense, and/or sell copies of the Product, and to permit persons to whom the Product is
+                             furnished to do so, subject to the 
+                      00007 ;following conditions:
+                      00008 ;
+                      00009 ;The above copyright notice and this permission notice shall be included in all copies or substantial po
+                            rtions of the Product.
+                      00010 ;
+                      00011 ;THE PRODUCT IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LI
+                            MITED TO THE WARRANTIES OF 
+                      00012 ;MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+                             COPYRIGHT HOLDERS BE LIABLE 
+                      00013 ;FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+                             FROM, OUT OF OR IN CONNECTION 
+                      00014 ;WITH THE PRODUCT OR THE USE OR OTHER DEALINGS IN THE PRODUCT.
+                      00015 ;#######################################################################################################
+                            ##################################################
+                      00016 ; 13Jul2019 V0 PJS New (based heavily on mad cat backpack) Added button override code (new function) 
+                      00017 ; 21Jul2019 V1 PJS Fixed init code to tristate the 2 I2C pins to not screw up other's badges. 
+                      00018     
+                      00019 #define CODE_VER_STRING "Peter Shabino 21Jul2019 code V1 for Chestoro by TwinkleTwinkie www.wire2wire.or
+                            g" ;Just in ROM !!! update vars below with true level!!
+                      00020 
+                      00021 
+                      00022 ;****************************************************************************************
+                      00023 ; port list [SSOP28]
+                      00024 ; Vss(14)
+                      00025 ; Vdd(1)
+                      00026 ; RA0(13)       [ICSPDAT]
+                      00027 ; RA1(12)       [ICSPCLK]
+                      00028 ; RA2(11)       led left eye
+                      00029 ; RA3(4)        [#MCLR]
+                      00030 ; RA4(3)        led tooth 4
+                      00031 ; RA5(2)        led tooth 3
+                      00032 ; RC0(10)       led tooth 1 left
+                      00033 ; RC1(9)        button in 
+                      00034 ; RC2(8)        led tooth 2
+                      00035 ; RC3(7)        
+                      00036 ; RC4(6)        led right eye
+                      00037 ; RC5(5)        led tooth 5 right
+                      00038 ;****************************************************************************************
+                      00039 
+                      00040         
+                      00041 ; PIC16F1503 Configuration Bit Settings
+                      00042 #include "p16f1503.inc"
+                      00001         LIST
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00002 
+                      00003 ;==========================================================================
+                      00004 ; Build date : Mar 17 2019
+                      00005 ;  MPASM PIC16F1503 processor include
+                      00006 ; 
+                      00007 ;  (c) Copyright 1999-2019 Microchip Technology, All rights reserved
+                      00008 ;==========================================================================
+                      00009 
+                      01420         LIST
+                      00043 ; CONFIG1
+                      00044 ; __config 0xFF04
+8007   3F84           00045  __CONFIG _CONFIG1, _FOSC_INTOSC & _WDTE_OFF & _PWRTE_ON & _MCLRE_OFF & _CP_OFF & _BOREN_ON & _CLKOUTEN_
+                            OFF
+                      00046 ; CONFIG2
+                      00047 ; __config 0xF7FF
+8008   1FFF           00048  __CONFIG _CONFIG2, _WRT_OFF & _STVREN_ON & _BORV_LO & _LPBOR_OFF & _LVP_OFF    
+                      00049  
+                      00050  
+                      00051  
+                      00052 ;------------------
+                      00053 ; constants
+                      00054 ;------------------     
+  0000007D            00055 PWM_DELAY               equ 0x7D
+                      00056         
+                      00057 ;------------------
+                      00058 ; vars (0x20 - 0x6f) bank 0
+                      00059 ;------------------
+  00000020            00060 right_eye               equ 0x20
+  00000021            00061 left_eye                equ 0x21
+  00000022            00062 tooth1                  equ 0x22
+  00000023            00063 tooth2                  equ 0x23
+  00000024            00064 tooth3                  equ 0x24
+  00000025            00065 tooth4                  equ 0x25
+  00000026            00066 tooth5                  equ 0x26
+  00000028            00067 pwm_cnt                 equ     0x28
+  00000029            00068 delay_l                 equ 0x29
+  0000002A            00069 delay_h                 equ     0x2A
+  0000002B            00070 counter1                equ 0x2B
+  0000002C            00071 temp                    equ 0x2C
+  0000002D            00072 LFSR_0                  equ     0x2D                    
+  0000002E            00073 LFSR_1                  equ     0x2E                    
+  0000002F            00074 LFSR_2                  equ     0x2F                    
+  00000030            00075 LFSR_3                  equ     0x30    
+  00000031            00076 LFSR_count              equ 0x31
+  00000032            00077 counter2                equ 0x32
+  00000033            00078 button                  equ     0x33
+  00000034            00079 next_animation  equ     0x34
+  00000035            00080 mode                    equ     0x35
+                      00081  
+                      00082  
+                      00083 ;------------------
+                      00084 ; vars (0x70 - 0x7F) global regs
+                      00085 ;------------------
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  00000070            00086 gtemp                   equ     0x70
+                      00087 
+                      00088  
+                      00089 ;put the following at address 0000h
+                      00090         org     0000h
+0000   2???           00091         goto    START                       ;vector to initialization sequence
+                      00092 
+                      00093 ;#######################################################################################################
+                            ####################
+                      00094 ; intrupt routine
+                      00095 ;#######################################################################################################
+                            ####################
+                      00096 ;put the following at address 0004h
+                      00097         org     0004h   
+                      00098         ; following regs are autosaved
+                      00099         ; W
+                      00100         ; STATUS (except TO and PD)
+                      00101         ; BSR
+                      00102         ; FSR
+                      00103         ; PCLATH
+                      00104         
+                      00105         
+                      00106         ;------------------
+0004   0188           00107         clrf    BSR                         ; bank 0
+                      00108         ;------------------
+0005   1D0B           00109         btfss   INTCON, TMR0IF
+0006   2???           00110         goto    IRQ_not_tmr0
+                      00111                 
+                      00112         ; update PWM timer
+0007   0AA8           00113         incf    pwm_cnt, F
+0008   1D03           00114         btfss   STATUS, Z
+0009   2???           00115         goto    IRQ_tmr0_pwm_not_zero
+000A   0821           00116         movf    left_eye, W
+000B   1D03           00117         btfss   STATUS, Z
+000C   110C           00118         bcf             PORTA, 2
+000D   0820           00119         movf    right_eye, W
+000E   1D03           00120         btfss   STATUS, Z
+000F   120E           00121         bcf             PORTC, 4
+0010   0822           00122         movf    tooth1, W
+0011   1D03           00123         btfss   STATUS, Z
+0012   100E           00124         bcf             PORTC, 0
+0013   0823           00125         movf    tooth2, W
+0014   1D03           00126         btfss   STATUS, Z
+0015   110E           00127         bcf             PORTC, 2
+0016   0824           00128         movf    tooth3, W
+0017   1D03           00129         btfss   STATUS, Z
+0018   128C           00130         bcf             PORTA, 5
+0019   0825           00131         movf    tooth4, W
+001A   1D03           00132         btfss   STATUS, Z
+001B   120C           00133         bcf             PORTA, 4
+001C   0826           00134         movf    tooth5, W
+001D   1D03           00135         btfss   STATUS, Z
+001E   128E           00136         bcf             PORTC, 5
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+001F   2???           00137         goto    IRQ_tmr0_done
+                      00138         
+0020                  00139 IRQ_tmr0_pwm_not_zero   
+0020   0828           00140         movf    pwm_cnt, W
+0021   0221           00141         subwf   left_eye, W
+0022   1C03           00142         btfss   STATUS, C
+0023   150C           00143         bsf             PORTA, 2
+0024   0828           00144         movf    pwm_cnt, W
+0025   0220           00145         subwf   right_eye, W
+0026   1C03           00146         btfss   STATUS, C
+0027   160E           00147         bsf             PORTC, 4
+0028   0828           00148         movf    pwm_cnt, W
+0029   0222           00149         subwf   tooth1, W
+002A   1C03           00150         btfss   STATUS, C
+002B   140E           00151         bsf             PORTC, 0
+002C   0828           00152         movf    pwm_cnt, W
+002D   0223           00153         subwf   tooth2, W
+002E   1C03           00154         btfss   STATUS, C
+002F   150E           00155         bsf             PORTC, 2
+0030   0828           00156         movf    pwm_cnt, W
+0031   0224           00157         subwf   tooth3, W
+0032   1C03           00158         btfss   STATUS, C
+0033   168C           00159         bsf             PORTA, 5
+0034   0828           00160         movf    pwm_cnt, W
+0035   0225           00161         subwf   tooth4, W
+0036   1C03           00162         btfss   STATUS, C
+0037   160C           00163         bsf             PORTA, 4
+0038   0828           00164         movf    pwm_cnt, W
+0039   0226           00165         subwf   tooth5, W
+003A   1C03           00166         btfss   STATUS, C
+003B   168E           00167         bsf             PORTC, 5
+                      00168         
+003C                  00169 IRQ_tmr0_done   
+003C   307D           00170         movlw   PWM_DELAY               ; prime timer 0 with inital value
+003D   0095           00171         movwf   TMR0
+003E   110B           00172         bcf             INTCON, TMR0IF  
+003F                  00173 IRQ_not_tmr0
+                      00174         
+                      00175         
+003F   1C11           00176         btfss   PIR1, TMR1IF
+0040   2???           00177         goto    IRQ_not_tmr1
+0041   1011           00178         bcf             PIR1, TMR1IF
+                      00179 
+                      00180         ; check if delay is already 0
+0042   0829           00181         movf    delay_l, W
+0043   1D03           00182         btfss   STATUS,Z
+0044   2???           00183         goto    IRQ_tmr1_not_zero
+0045   082A           00184         movf    delay_h, W
+0046   1903           00185         btfsc   STATUS,Z
+0047   2???           00186         goto    IRQ_not_tmr1
+0048                  00187 IRQ_tmr1_not_zero       
+                      00188         ; subtract 1
+0048   3001           00189         movlw   0x01
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0049   02A9           00190         subwf   delay_l, F
+004A   1C03           00191         btfss   STATUS, C
+004B   03AA           00192         decf    delay_h, F
+004C                  00193 IRQ_not_tmr1
+                      00194         
+004C   0009           00195         retfie
+                      00196 ;#######################################################################################################
+                            ####################
+                      00197 ; end of IRQ code
+                      00198 ;#######################################################################################################
+                            ####################    
+                      00199         
+004D                  00200 START
+                      00201         ; init crap
+                      00202         ;------------------
+004D   0188           00203         clrf    BSR                         ; bank 0
+                      00204         ;------------------
+004E   018B           00205         clrf    INTCON                  ; disable interupts
+                      00206         
+                      00207         ; init timers
+004F   307D           00208         movlw   PWM_DELAY               ; prime timer 0 with inital value
+0050   0095           00209         movwf   TMR0
+0051   0199           00210         clrf    T1GCON                  ; disable timer 1 gate control
+0052   1011           00211         bcf             PIR1, TMR1IF    ; clear interrupt
+0053   3031           00212         movlw   0x31                    ; timer1 Fosc/4, 1:8 pre, on
+0054   0098           00213         movwf   T1CON
+0055   30FF           00214         movlw   0xFF
+0056   009B           00215         movwf   PR2
+0057   303E           00216         movlw   0x3E                    ; timer 2 on, 1:8 post, 1:16 pre scaler
+0058   009C           00217         movwf   T2CON
+0059   019A           00218         clrf    TMR2
+                      00219 
+                      00220         
+                      00221         ; clear vars
+005A   3020           00222         movlw   0x20                    ; start of bank 0 vars
+005B   0084           00223         movwf   FSR0L
+005C   0185           00224         clrf    FSR0H
+005D   3050           00225         movlw   0x50                    ; clear all of bank other than globals
+005E   00F0           00226         movwf   gtemp
+005F                  00227 init_bank0_loop
+005F   0180           00228         clrf    INDF0
+0060   0A84           00229         incf    FSR0L, F
+0061   0BF0           00230         decfsz  gtemp, F
+0062   2???           00231         goto    init_bank0_loop 
+                      00232         
+                      00233         ; init LFSR
+0063   3055           00234         movlw   0x55
+0064   00AD           00235         movwf   LFSR_0
+0065   00AE           00236         movwf   LFSR_1
+0066   00AF           00237         movwf   LFSR_2
+0067   00B0           00238         movwf   LFSR_3  
+                      00239 
+                      00240         
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00241         ;------------------
+0068   3003           00242         movlw   d'3'
+0069   0088           00243         movwf   BSR             
+                      00244         ;------------------
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+006A   018C           00245         clrf    ANSELA
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+006B   018E           00246         clrf    ANSELC
+                      00247 
+                      00248         ;------------------
+006C   3002           00249         movlw   d'2'
+006D   0088           00250         movwf   BSR             
+                      00251         ;------------------
+006E   302B           00252         movlw   0x2B
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+006F   008C           00253         movwf   LATA
+0070   3000           00254         movlw   0x00
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0071   008E           00255         movwf   LATC
+                      00256 
+                      00257         ;------------------
+0072   3001           00258         movlw   d'1'
+0073   0088           00259         movwf   BSR             
+                      00260         ;------------------
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0074   018C           00261         clrf    TRISA                       ; 0 = output
+0075   3002           00262         movlw   0x02                            ; C1 button input rest outputs
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0076   008E           00263         movwf   TRISC                           ; 0 = output
+0077   3078           00264         movlw   0x78
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0078   0099           00265         movwf   OSCCON
+0079   30D8           00266         movlw   0xD8                            ; timer 0 internal clock, prescaler to timer 0, 2 divide
+                            r
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+007A   0095           00267         movwf   OPTION_REG
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+007B   1411           00268         bsf             PIE1, TMR1IE            ; enable timer 1 interrupt
+                      00269         
+                      00270         ;------------------
+007C   0188           00271         clrf    BSR                                     ; bank 0
+                      00272         ;------------------
+007D   30E0           00273         movlw   0xE0                            ; global, PE, and Timer 0 on
+007E   008B           00274         movwf   INTCON                      ; enable interrupts
+                      00275 
+                      00276         
+                      00277         
+007F   2???           00278         goto    START_ANIMATION
+                      00279         
+                      00280 ;-------------------------------------------------------------------------------------------------------
+                            -------------------------------------------     
+0080                  00281 MAINLOOP
+                      00282 
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00283         ; check for button down
+0080   188E           00284         btfsc   PORTC, 1
+0081   2???           00285         goto    mainloop_no_button
+                      00286         
+                      00287         ; debounce the release
+0082   01B3           00288         clrf    button
+0083                  00289 mainloop_button_chk
+0083   01AC           00290         clrf    temp
+0084                  00291 mainloop_button_delay
+0084   0BAC           00292         decfsz  temp, F
+0085   2???           00293         goto    mainloop_button_delay
+0086   1403           00294         bsf             STATUS, C
+0087   1C8E           00295         btfss   PORTC, 1
+0088   1003           00296         bcf             STATUS, C
+0089   0CB3           00297         rrf             button, F
+008A   0933           00298         comf    button, W
+008B   1D03           00299         btfss   STATUS, Z
+008C   2???           00300         goto    mainloop_button_chk
+                      00301         
+                      00302         ; select the next animation in the order
+008D   0AB4           00303         incf    next_animation, F
+                      00304         ; set mode on to shorten or fix delay timers
+008E   1435           00305         bsf             mode, 0
+                      00306         
+008F   0834           00307         movf    next_animation, W
+0090   3907           00308         andlw   0x07
+0091   000B           00309         brw 
+0092   2???           00310         goto    animation_smile_in_out
+0093   2???           00311         goto    animation_blink
+0094   2???           00312         goto    animation_lip_lick_right
+0095   2???           00313         goto    animation_lip_lick_left
+0096   2???           00314         goto    animation_lip_piano
+0097   2???           00315         goto    animation_eye_bobble
+0098   2???           00316         goto    animation_talk
+0099   2???           00317         goto    animation_sparkles      
+                      00318         
+009A   2???           00319         goto    MAINLOOP
+                      00320         
+                      00321         
+                      00322         
+009B                  00323 mainloop_no_button      
+009B   01B5           00324         clrf    mode
+                      00325         ; delay between animation seq (all LEDs on)
+009C   2???           00326         call    _CYCLE_LFSR     
+009D   00A9           00327         movwf   delay_l 
+009E                  00328 mainloop_delay
+009E   1C8E           00329         btfss   PORTC, 1
+009F   01A9           00330         clrf    delay_l
+00A0   0829           00331         movf    delay_l, W
+00A1   1D03           00332         btfss   STATUS, Z
+00A2   2???           00333         goto    mainloop_delay
+                      00334 
+                      00335         
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00A3   2???           00336         call    _CYCLE_LFSR     
+00A4   391F           00337         andlw   0x1F
+00A5   000B           00338         brw 
+00A6   2???           00339         goto    animation_smile_in_out
+00A7   2???           00340         goto    animation_blink
+00A8   2???           00341         goto    animation_lip_lick_right
+00A9   2???           00342         goto    animation_lip_lick_left
+00AA   2???           00343         goto    animation_lip_piano
+00AB   2???           00344         goto    animation_eye_bobble
+00AC   2???           00345         goto    animation_talk
+00AD   2???           00346         goto    animation_sparkles
+                      00347 
+00AE   2???           00348         goto    animation_blink
+00AF   2???           00349         goto    animation_blink 
+00B0   2???           00350         goto    animation_smile_in_out
+00B1   2???           00351         goto    animation_lip_lick_right
+                      00352         
+00B2   2???           00353         goto    animation_lip_lick_left
+00B3   2???           00354         goto    animation_lip_piano
+00B4   2???           00355         goto    animation_eye_bobble
+00B5   2???           00356         goto    animation_talk
+                      00357 
+00B6   2???           00358         goto    animation_blink
+00B7   2???           00359         goto    animation_blink
+00B8   2???           00360         goto    animation_blink
+00B9   2???           00361         goto    animation_blink
+                      00362 
+00BA   2???           00363         goto    animation_lip_lick_right
+00BB   2???           00364         goto    animation_lip_lick_left
+00BC   2???           00365         goto    animation_eye_bobble
+00BD   2???           00366         goto    animation_blink
+                      00367         
+                      00368         
+00BE   2???           00369         goto    animation_blink
+00BF   2???           00370         goto    animation_blink 
+00C0   2???           00371         goto    animation_smile_in_out
+00C1   2???           00372         goto    animation_lip_lick_right
+                      00373         
+00C2   2???           00374         goto    animation_lip_lick_left
+00C3   2???           00375         goto    animation_lip_piano
+00C4   2???           00376         goto    animation_eye_bobble
+00C5   2???           00377         goto    animation_talk
+                      00378         
+                      00379         
+00C6   2???           00380         goto    MAINLOOP
+                      00381 
+                      00382 
+                      00383 ;-----------------------------------------
+00C7                  00384 animation_sparkles
+                      00385 ;-----------------------------------------
+                      00386 
+                      00387         ; see if in manual mode if so do a fixed duration every time.
+00C7   1C35           00388         btfss   mode, 0
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00C8   2???           00389         goto    sparkles_normal
+00C9   3040           00390         movlw   0x40
+00CA   00B2           00391         movwf   counter2
+00CB   2???           00392         goto    sparkles_loop           
+                      00393 
+00CC                  00394 sparkles_normal 
+00CC   2???           00395         call    _CYCLE_LFSR     
+00CD   00B2           00396         movwf   counter2
+                      00397 
+00CE                  00398 sparkles_loop
+00CE   2???           00399         call    _CYCLE_LFSR     
+00CF   2???           00400         call    _pwm_values
+00D0   00A2           00401         movwf   tooth1
+00D1   2???           00402         call    _CYCLE_LFSR     
+00D2   2???           00403         call    _pwm_values
+00D3   00A3           00404         movwf   tooth2
+00D4   2???           00405         call    _CYCLE_LFSR     
+00D5   2???           00406         call    _pwm_values
+00D6   00A4           00407         movwf   tooth3
+00D7   2???           00408         call    _CYCLE_LFSR     
+00D8   2???           00409         call    _pwm_values
+00D9   00A5           00410         movwf   tooth4
+00DA   2???           00411         call    _CYCLE_LFSR     
+00DB   2???           00412         call    _pwm_values
+00DC   00A6           00413         movwf   tooth5
+00DD   2???           00414         call    _CYCLE_LFSR     
+00DE   2???           00415         call    _pwm_values
+00DF   00A1           00416         movwf   left_eye
+00E0   2???           00417         call    _CYCLE_LFSR     
+00E1   2???           00418         call    _pwm_values
+00E2   00A0           00419         movwf   right_eye
+                      00420 
+00E3   2???           00421         call    _CYCLE_LFSR     
+00E4   3907           00422         andlw   0x07
+00E5   1903           00423         btfsc   STATUS, Z
+00E6   3001           00424         movlw   0x01    
+00E7   2???           00425         call    _delay  
+                      00426         
+                      00427         
+00E8   0BB2           00428         decfsz  counter2, F
+00E9   2???           00429         goto    sparkles_loop
+                      00430         
+00EA   30FF           00431         movlw   0xFF
+00EB   00A2           00432         movwf   tooth1
+00EC   00A3           00433         movwf   tooth2
+00ED   00A4           00434         movwf   tooth3
+00EE   00A5           00435         movwf   tooth4
+00EF   00A6           00436         movwf   tooth5
+00F0   00A1           00437         movwf   left_eye
+00F1   00A0           00438         movwf   right_eye
+                      00439         
+00F2   2???           00440         goto    MAINLOOP        
+                      00441 ;-----------------------------------------
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00F3                  00442 animation_talk
+                      00443 ;-----------------------------------------
+                      00444 #define talk_delay 0x03
+                      00445         
+                      00446         ; see if in manual mode if so do a fixed duration every time.
+00F3   1C35           00447         btfss   mode, 0
+00F4   2???           00448         goto    talk_normal
+00F5   3005           00449         movlw   0x05
+00F6   00B2           00450         movwf   counter2
+00F7   2???           00451         goto    talk_loop       
+                      00452 
+00F8                  00453 talk_normal     
+00F8   2???           00454         call    _CYCLE_LFSR     
+00F9   3907           00455         andlw   0x07
+00FA   3801           00456         iorlw   0x01
+00FB   00B2           00457         movwf   counter2
+                      00458                 
+00FC                  00459 talk_loop
+00FC   300F           00460         movlw   0x0F
+00FD   00AB           00461         movwf   counter1
+00FE                  00462 talk_loop1
+00FE   082B           00463         movf    counter1, W
+00FF   2???           00464         call    _pwm_values
+0100   00A2           00465         movwf   tooth1
+0101   00A6           00466         movwf   tooth5  
+0102   2???           00467         call    _CYCLE_LFSR     
+0103   3903           00468         andlw   talk_delay
+0104   1903           00469         btfsc   STATUS, Z
+0105   3001           00470         movlw   0x01    
+0106   2???           00471         call    _delay
+0107   03AB           00472         decf    counter1, F
+0108   082B           00473         movf    counter1, W
+0109   3A07           00474         xorlw   0x07
+010A   1D03           00475         btfss   STATUS, Z
+010B   2???           00476         goto    talk_loop1
+                      00477         
+                      00478         
+010C                  00479 talk_loop2
+010C   082B           00480         movf    counter1, W
+010D   2???           00481         call    _pwm_values
+010E   00A2           00482         movwf   tooth1
+010F   00A6           00483         movwf   tooth5  
+0110   082B           00484         movf    counter1, W
+0111   3E08           00485         addlw   0x08
+0112   2???           00486         call    _pwm_values
+0113   00A3           00487         movwf   tooth2
+0114   00A5           00488         movwf   tooth4  
+0115   2???           00489         call    _CYCLE_LFSR     
+0116   3903           00490         andlw   talk_delay
+0117   1903           00491         btfsc   STATUS, Z
+0118   3001           00492         movlw   0x01
+0119   2???           00493         call    _delay
+011A   0BAB           00494         decfsz  counter1, F
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+011B   2???           00495         goto    talk_loop2
+011C   01A2           00496         clrf    tooth1
+011D   01A6           00497         clrf    tooth5
+                      00498 
+011E   3008           00499         movlw   0x08
+011F   00AB           00500         movwf   counter1        
+0120                  00501 talk_loop3
+0120   082B           00502         movf    counter1, W
+0121   2???           00503         call    _pwm_values
+0122   00A3           00504         movwf   tooth2
+0123   00A5           00505         movwf   tooth4  
+0124   2???           00506         call    _CYCLE_LFSR     
+0125   3903           00507         andlw   talk_delay
+0126   1903           00508         btfsc   STATUS, Z
+0127   3001           00509         movlw   0x01
+0128   2???           00510         call    _delay
+0129   0BAB           00511         decfsz  counter1, F
+012A   2???           00512         goto    talk_loop3
+                      00513         
+012B                  00514 talk_loop4
+012B   082B           00515         movf    counter1, W
+012C   2???           00516         call    _pwm_values
+012D   00A3           00517         movwf   tooth2
+012E   00A5           00518         movwf   tooth4  
+012F   2???           00519         call    _CYCLE_LFSR     
+0130   3903           00520         andlw   talk_delay
+0131   1903           00521         btfsc   STATUS, Z
+0132   3001           00522         movlw   0x01
+0133   2???           00523         call    _delay
+0134   0AAB           00524         incf    counter1, F
+0135   082B           00525         movf    counter1, W
+0136   3A09           00526         xorlw   0x09
+0137   1D03           00527         btfss   STATUS, Z
+0138   2???           00528         goto    talk_loop4
+                      00529         
+0139                  00530 talk_loop5
+0139   082B           00531         movf    counter1, W
+013A   2???           00532         call    _pwm_values
+013B   00A3           00533         movwf   tooth2
+013C   00A5           00534         movwf   tooth4  
+013D   3008           00535         movlw   0x08
+013E   022B           00536         subwf   counter1, W
+013F   2???           00537         call    _pwm_values
+0140   00A2           00538         movwf   tooth1
+0141   00A6           00539         movwf   tooth5  
+0142   2???           00540         call    _CYCLE_LFSR     
+0143   3903           00541         andlw   talk_delay
+0144   1903           00542         btfsc   STATUS, Z
+0145   3001           00543         movlw   0x01
+0146   2???           00544         call    _delay
+0147   0AAB           00545         incf    counter1, F
+0148   082B           00546         movf    counter1, W
+0149   3A0F           00547         xorlw   0x0F
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+014A   1D03           00548         btfss   STATUS, Z
+014B   2???           00549         goto    talk_loop5
+014C   30FF           00550         movlw   0xFF
+014D   00A3           00551         movwf   tooth2
+014E   00A6           00552         movwf   tooth5
+                      00553         
+014F   3008           00554         movlw   0x08
+0150   00AB           00555         movwf   counter1
+0151                  00556 talk_loop6
+0151   082B           00557         movf    counter1, W
+0152   2???           00558         call    _pwm_values
+0153   00A2           00559         movwf   tooth1
+0154   00A6           00560         movwf   tooth5  
+0155   2???           00561         call    _CYCLE_LFSR     
+0156   3903           00562         andlw   talk_delay
+0157   1903           00563         btfsc   STATUS, Z
+0158   3001           00564         movlw   0x01
+0159   2???           00565         call    _delay
+015A   0AAB           00566         incf    counter1, F
+015B   082B           00567         movf    counter1, W
+015C   3A0F           00568         xorlw   0x0F
+015D   1D03           00569         btfss   STATUS, Z
+015E   2???           00570         goto    talk_loop6
+015F   30FF           00571         movlw   0xFF
+0160   00A2           00572         movwf   tooth1
+0161   00A5           00573         movwf   tooth4
+                      00574         
+0162   0BB2           00575         decfsz  counter2, F
+0163   2???           00576         goto    talk_loop
+                      00577         
+0164   2???           00578         goto    MAINLOOP                
+                      00579         
+                      00580 ;-----------------------------------------
+0165                  00581 animation_eye_bobble
+                      00582 ;-----------------------------------------
+                      00583         ; see if in manual mode if so do a fixed duration every time.
+0165   1C35           00584         btfss   mode, 0
+0166   2???           00585         goto    eye_bobble_normal
+0167   3005           00586         movlw   0x05
+0168   00B2           00587         movwf   counter2
+0169   2???           00588         goto    eye_bobble_loop 
+                      00589         
+016A                  00590 eye_bobble_normal       
+016A   2???           00591         call    _CYCLE_LFSR     
+016B   3907           00592         andlw   0x07
+016C   3801           00593         iorlw   0x01
+016D   00B2           00594         movwf   counter2
+                      00595                 
+016E                  00596 eye_bobble_loop 
+016E   300F           00597         movlw   0x0F
+016F   00AB           00598         movwf   counter1        
+0170                  00599 eye_bobble_loop1
+0170   082B           00600         movf    counter1, W
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0171   2???           00601         call    _pwm_values
+0172   00A1           00602         movwf   left_eye
+0173   3001           00603         movlw   0x01
+0174   2???           00604         call    _delay
+0175   0BAB           00605         decfsz  counter1, F
+0176   2???           00606         goto    eye_bobble_loop1        
+                      00607         
+0177   30F0           00608         movlw   0xF0
+0178   00AB           00609         movwf   counter1        
+0179                  00610 eye_bobble_loop2
+0179   082B           00611         movf    counter1, W
+017A   2???           00612         call    _pwm_values
+017B   00A1           00613         movwf   left_eye
+017C   3001           00614         movlw   0x01
+017D   2???           00615         call    _delay
+017E   0FAB           00616         incfsz  counter1, F
+017F   2???           00617         goto    eye_bobble_loop2
+                      00618 
+0180   300F           00619         movlw   0x0F
+0181   00AB           00620         movwf   counter1        
+0182                  00621 eye_bobble_loop3        
+0182   082B           00622         movf    counter1, W
+0183   2???           00623         call    _pwm_values
+0184   00A0           00624         movwf   right_eye
+0185   3001           00625         movlw   0x01
+0186   2???           00626         call    _delay
+0187   0BAB           00627         decfsz  counter1, F
+0188   2???           00628         goto    eye_bobble_loop3
+                      00629         
+0189   30F0           00630         movlw   0xF0
+018A   00AB           00631         movwf   counter1        
+018B                  00632 eye_bobble_loop4
+018B   082B           00633         movf    counter1, W
+018C   2???           00634         call    _pwm_values
+018D   00A0           00635         movwf   right_eye
+018E   3001           00636         movlw   0x01
+018F   2???           00637         call    _delay
+0190   0FAB           00638         incfsz  counter1, F
+0191   2???           00639         goto    eye_bobble_loop4
+                      00640         
+0192   0BB2           00641         decfsz  counter2, F
+0193   2???           00642         goto    eye_bobble_loop
+                      00643         
+                      00644         
+0194   2???           00645         goto    MAINLOOP                
+                      00646         
+                      00647 ;-----------------------------------------
+0195                  00648 animation_lip_piano
+                      00649 ;-----------------------------------------
+                      00650         ; see if in manual mode if so do a fixed duration every time.
+0195   1C35           00651         btfss   mode, 0
+0196   2???           00652         goto    piano_normal
+0197   3007           00653         movlw   0x07
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0198   00B2           00654         movwf   counter2
+0199   2???           00655         goto    piano_start
+                      00656         
+019A                  00657 piano_normal    
+019A   2???           00658         call    _CYCLE_LFSR     
+019B   3907           00659         andlw   0x07
+019C   3801           00660         iorlw   0x01
+019D   00B2           00661         movwf   counter2
+                      00662         
+019E                  00663 piano_start
+019E   300F           00664         movlw   0x0F
+019F   00AB           00665         movwf   counter1        
+01A0                  00666 piano_out_loop
+01A0   082B           00667         movf    counter1, W
+01A1   2???           00668         call    _pwm_values
+01A2   00A6           00669         movwf   tooth5
+01A3   3001           00670         movlw   0x01
+01A4   2???           00671         call    _delay
+01A5   0BAB           00672         decfsz  counter1, F
+01A6   2???           00673         goto    piano_out_loop
+                      00674         
+01A7   30F0           00675         movlw   0xF0
+01A8   00AB           00676         movwf   counter1        
+01A9                  00677 piano_in_loop
+01A9   082B           00678         movf    counter1, W
+01AA   2???           00679         call    _pwm_values
+01AB   00A6           00680         movwf   tooth5
+01AC   3001           00681         movlw   0x01
+01AD   2???           00682         call    _delay
+01AE   0FAB           00683         incfsz  counter1, F
+01AF   2???           00684         goto    piano_in_loop
+                      00685         
+01B0                  00686 piano_loop      
+01B0   300F           00687         movlw   0x0F
+01B1   00AB           00688         movwf   counter1        
+01B2                  00689 piano_out_loop1 
+01B2   082B           00690         movf    counter1, W
+01B3   2???           00691         call    _pwm_values
+01B4   00A3           00692         movwf   tooth2
+01B5   00A5           00693         movwf   tooth4
+01B6   3001           00694         movlw   0x01
+01B7   2???           00695         call    _delay
+01B8   0BAB           00696         decfsz  counter1, F
+01B9   2???           00697         goto    piano_out_loop1 
+                      00698         
+01BA   30F0           00699         movlw   0xF0
+01BB   00AB           00700         movwf   counter1        
+01BC                  00701 piano_in_loop1
+01BC   082B           00702         movf    counter1, W
+01BD   2???           00703         call    _pwm_values
+01BE   00A3           00704         movwf   tooth2
+01BF   00A5           00705         movwf   tooth4
+01C0   3001           00706         movlw   0x01
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01C1   2???           00707         call    _delay
+01C2   0FAB           00708         incfsz  counter1, F
+01C3   2???           00709         goto    piano_in_loop1
+                      00710 
+01C4   300F           00711         movlw   0x0F
+01C5   00AB           00712         movwf   counter1        
+01C6                  00713 piano_out_loop2 
+01C6   082B           00714         movf    counter1, W
+01C7   2???           00715         call    _pwm_values
+01C8   00A2           00716         movwf   tooth1
+01C9   00A4           00717         movwf   tooth3
+01CA   00A6           00718         movwf   tooth5
+01CB   3001           00719         movlw   0x01
+01CC   2???           00720         call    _delay
+01CD   0BAB           00721         decfsz  counter1, F
+01CE   2???           00722         goto    piano_out_loop2
+                      00723         
+01CF   30F0           00724         movlw   0xF0
+01D0   00AB           00725         movwf   counter1        
+01D1                  00726 piano_in_loop2
+01D1   082B           00727         movf    counter1, W
+01D2   2???           00728         call    _pwm_values
+01D3   00A2           00729         movwf   tooth1
+01D4   00A4           00730         movwf   tooth3
+01D5   00A6           00731         movwf   tooth5
+01D6   3001           00732         movlw   0x01
+01D7   2???           00733         call    _delay
+01D8   0FAB           00734         incfsz  counter1, F
+01D9   2???           00735         goto    piano_in_loop2
+                      00736         
+01DA   0BB2           00737         decfsz  counter2, F
+01DB   2???           00738         goto    piano_loop
+                      00739         
+                      00740         
+01DC   2???           00741         goto    MAINLOOP        
+                      00742 
+                      00743         
+                      00744 ;-----------------------------------------
+01DD                  00745 animation_lip_lick_left
+                      00746 ;-----------------------------------------
+                      00747         
+01DD   3020           00748         movlw   0x20
+01DE   00A6           00749         movwf   tooth5
+                      00750 
+01DF   3008           00751         movlw   0x08
+01E0   2???           00752         call    _delay
+                      00753 
+01E1   30FF           00754         movlw   0xFF
+01E2   00A6           00755         movwf   tooth5
+01E3   3020           00756         movlw   0x20
+01E4   00A5           00757         movwf   tooth4
+                      00758 
+01E5   3008           00759         movlw   0x08
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01E6   2???           00760         call    _delay
+                      00761 
+01E7   30FF           00762         movlw   0xFF
+01E8   00A5           00763         movwf   tooth4
+01E9   3020           00764         movlw   0x20
+01EA   00A4           00765         movwf   tooth3
+                      00766 
+01EB   3008           00767         movlw   0x08
+01EC   2???           00768         call    _delay
+                      00769 
+01ED   30FF           00770         movlw   0xFF
+01EE   00A4           00771         movwf   tooth3
+01EF   3020           00772         movlw   0x20
+01F0   00A3           00773         movwf   tooth2
+                      00774 
+01F1   3008           00775         movlw   0x08
+01F2   2???           00776         call    _delay
+                      00777 
+01F3   30FF           00778         movlw   0xFF
+01F4   00A3           00779         movwf   tooth2
+01F5   3020           00780         movlw   0x20
+01F6   00A2           00781         movwf   tooth1
+                      00782 
+01F7   3008           00783         movlw   0x08
+01F8   2???           00784         call    _delay
+                      00785 
+01F9   30FF           00786         movlw   0xFF
+01FA   00A2           00787         movwf   tooth1
+                      00788         
+01FB   2???           00789         goto    MAINLOOP        
+                      00790         
+                      00791         
+                      00792 ;-----------------------------------------
+01FC                  00793 animation_lip_lick_right
+                      00794 ;-----------------------------------------
+                      00795         
+01FC   3020           00796         movlw   0x20
+01FD   00A2           00797         movwf   tooth1
+                      00798 
+01FE   3008           00799         movlw   0x08
+01FF   2???           00800         call    _delay
+                      00801 
+0200   30FF           00802         movlw   0xFF
+0201   00A2           00803         movwf   tooth1
+0202   3020           00804         movlw   0x20
+0203   00A3           00805         movwf   tooth2
+                      00806 
+0204   3008           00807         movlw   0x08
+0205   2???           00808         call    _delay
+                      00809 
+0206   30FF           00810         movlw   0xFF
+0207   00A3           00811         movwf   tooth2
+0208   3020           00812         movlw   0x20
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0209   00A4           00813         movwf   tooth3
+                      00814 
+020A   3008           00815         movlw   0x08
+020B   2???           00816         call    _delay
+                      00817 
+020C   30FF           00818         movlw   0xFF
+020D   00A4           00819         movwf   tooth3
+020E   3020           00820         movlw   0x20
+020F   00A5           00821         movwf   tooth4
+                      00822 
+0210   3008           00823         movlw   0x08
+0211   2???           00824         call    _delay
+                      00825 
+0212   30FF           00826         movlw   0xFF
+0213   00A5           00827         movwf   tooth4
+0214   3020           00828         movlw   0x20
+0215   00A6           00829         movwf   tooth5
+                      00830 
+0216   3008           00831         movlw   0x08
+0217   2???           00832         call    _delay
+                      00833 
+0218   30FF           00834         movlw   0xFF
+0219   00A6           00835         movwf   tooth5
+                      00836         
+021A   2???           00837         goto    MAINLOOP        
+                      00838         
+                      00839 ;-----------------------------------------
+021B                  00840 animation_blink
+                      00841 ;-----------------------------------------
+021B   2???           00842         call    _CYCLE_LFSR     
+021C   1C2F           00843         btfss   LFSR_2,0
+021D   01A1           00844         clrf    left_eye
+021E   1CAF           00845         btfss   LFSR_2,1
+021F   01A0           00846         clrf    right_eye
+                      00847 
+                      00848         ; if no eye is off blink both
+0220   1C2F           00849         btfss   LFSR_2,0
+0221   2???           00850         goto    blink_ok
+0222   1CAF           00851         btfss   LFSR_2,1
+0223   2???           00852         goto    blink_ok
+0224   01A1           00853         clrf    left_eye
+0225   01A0           00854         clrf    right_eye
+                      00855         
+0226                  00856 blink_ok
+                      00857         ; blink lenght
+                      00858         ; check if in manual mode
+0226   1C35           00859         btfss   mode, 0
+0227   2???           00860         goto    blink_norm
+0228   3018           00861         movlw   0x18
+0229   00A9           00862         movwf   delay_l
+022A   2???           00863         goto    blink_delay     
+022B                  00864 blink_norm      
+022B   2???           00865         call    _CYCLE_LFSR     
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 18
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+022C   397F           00866         andlw   0x7F
+022D   3803           00867         iorlw   0x03
+022E                  00868 blink_delay     
+022E   2???           00869         call    _delay
+                      00870         
+022F   30FF           00871         movlw   0xFF
+0230   00A1           00872         movwf   left_eye
+0231   00A0           00873         movwf   right_eye
+                      00874         
+0232   2???           00875         goto    MAINLOOP
+                      00876         
+                      00877 ;-----------------------------------------
+0233                  00878 animation_smile_in_out  
+                      00879 ;-----------------------------------------
+0233   300F           00880         movlw   0x0F
+0234   00AB           00881         movwf   counter1        
+0235                  00882 eye_out_loop    
+0235   082B           00883         movf    counter1, W
+0236   2???           00884         call    _pwm_values
+0237   00A1           00885         movwf   left_eye
+0238   00A0           00886         movwf   right_eye
+0239   3007           00887         movlw   0x07
+023A   2???           00888         call    _delay
+023B   0BAB           00889         decfsz  counter1, F
+023C   2???           00890         goto    eye_out_loop    
+023D   01A1           00891         clrf    left_eye
+023E   01A0           00892         clrf    right_eye
+                      00893         
+                      00894         
+                      00895         ; delay between eyes off and smile off
+                      00896         ; check if in manual mode
+023F   1C35           00897         btfss   mode, 0
+0240   2???           00898         goto    eye_out_loop1_norm
+0241   3008           00899         movlw   0x08
+0242   00A9           00900         movwf   delay_l
+0243   2???           00901         goto    eye_out_loop1
+0244                  00902 eye_out_loop1_norm
+0244   2???           00903         call    _CYCLE_LFSR     
+0245   393F           00904         andlw   0x3F
+0246   3801           00905         iorlw   0x01
+0247   00A9           00906         movwf   delay_l 
+0248                  00907 eye_out_loop1
+0248   1C8E           00908         btfss   PORTC, 1
+0249   01A9           00909         clrf    delay_l 
+024A   0829           00910         movf    delay_l, W
+024B   1D03           00911         btfss   STATUS, Z
+024C   2???           00912         goto    eye_out_loop1
+                      00913         
+024D   300F           00914         movlw   0x0F
+024E   00AB           00915         movwf   counter1        
+024F                  00916 smile_out_loop  
+024F   082B           00917         movf    counter1, W
+0250   2???           00918         call    _pwm_values
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 19
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0251   00A2           00919         movwf   tooth1
+0252   00A3           00920         movwf   tooth2
+0253   00A4           00921         movwf   tooth3
+0254   00A5           00922         movwf   tooth4
+0255   00A6           00923         movwf   tooth5
+0256   3007           00924         movlw   0x07
+0257   2???           00925         call    _delay
+0258   0BAB           00926         decfsz  counter1, F
+0259   2???           00927         goto    smile_out_loop
+025A   01A2           00928         clrf    tooth1
+025B   01A3           00929         clrf    tooth2
+025C   01A4           00930         clrf    tooth3
+025D   01A5           00931         clrf    tooth4
+025E   01A6           00932         clrf    tooth5
+                      00933         
+                      00934         ; Delay in all off state
+                      00935         ; check if in manual mode
+025F   1C35           00936         btfss   mode, 0
+0260   2???           00937         goto    smile_out_loop1_norm
+0261   3008           00938         movlw   0x08
+0262   00A9           00939         movwf   delay_l
+0263   2???           00940         goto    smile_out_loop1
+0264                  00941 smile_out_loop1_norm
+0264   2???           00942         call    _CYCLE_LFSR     
+0265   3810           00943         iorlw   0x10
+0266   00A9           00944         movwf   delay_l 
+0267                  00945 smile_out_loop1
+0267   1C8E           00946         btfss   PORTC, 1
+0268   01A9           00947         clrf    delay_l 
+0269   0829           00948         movf    delay_l, W
+026A   1D03           00949         btfss   STATUS, Z
+026B   2???           00950         goto    smile_out_loop1
+                      00951 
+026C                  00952 START_ANIMATION 
+                      00953         
+026C   30F0           00954         movlw   0xF0
+026D   00AB           00955         movwf   counter1        
+026E                  00956 smile_in_loop   
+026E   082B           00957         movf    counter1, W
+026F   2???           00958         call    _pwm_values
+0270   00A2           00959         movwf   tooth1
+0271   00A3           00960         movwf   tooth2
+0272   00A4           00961         movwf   tooth3
+0273   00A5           00962         movwf   tooth4
+0274   00A6           00963         movwf   tooth5
+0275   3007           00964         movlw   0x07
+0276   2???           00965         call    _delay
+0277   0FAB           00966         incfsz  counter1, F
+0278   2???           00967         goto    smile_in_loop
+                      00968         
+                      00969         ; delay between smile on and eyes on
+                      00970         ; check if in manual mode
+0279   1C35           00971         btfss   mode, 0
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 20
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+027A   2???           00972         goto    smile_in_loop1_norm
+027B   3008           00973         movlw   0x08
+027C   00A9           00974         movwf   delay_l
+027D   2???           00975         goto    smile_in_loop1
+027E                  00976 smile_in_loop1_norm
+027E   2???           00977         call    _CYCLE_LFSR     
+027F   393F           00978         andlw   0x3F
+0280   3801           00979         iorlw   0x01
+0281   00A9           00980         movwf   delay_l 
+0282                  00981 smile_in_loop1
+0282   1C8E           00982         btfss   PORTC, 1
+0283   01A9           00983         clrf    delay_l 
+0284   0829           00984         movf    delay_l, W
+0285   1D03           00985         btfss   STATUS, Z
+0286   2???           00986         goto    smile_in_loop1
+                      00987 
+0287   30F0           00988         movlw   0xF0
+0288   00AB           00989         movwf   counter1        
+0289                  00990 eyes_in_loop    
+0289   082B           00991         movf    counter1, W
+028A   2???           00992         call    _pwm_values
+028B   00A1           00993         movwf   left_eye
+028C   00A0           00994         movwf   right_eye
+028D   3007           00995         movlw   0x07
+028E   2???           00996         call    _delay
+028F   0FAB           00997         incfsz  counter1, F
+0290   2???           00998         goto    eyes_in_loop
+                      00999         
+                      01000 
+0291   2???           01001         goto    MAINLOOP
+                      01002         
+                      01003 ;################################################################################
+                      01004 ; cycle the LFSR generator 8 bits and return the new result in W
+                      01005 ;################################################################################
+0292                  01006 _CYCLE_LFSR
+0292   3008           01007         movlw   0x08
+0293   00B1           01008         movwf   LFSR_count
+0294                  01009 cycle_lfsr_loop
+                      01010         ; seed register with inial value
+0294   102C           01011         bcf             temp, 0
+0295   182D           01012         btfsc   LFSR_0, 0
+0296   142C           01013         bsf             temp, 0
+                      01014         ; test bit invert result if set
+0297   192D           01015         btfsc   LFSR_0, 2
+0298   09AC           01016         comf    temp, f
+                      01017         ; test bit invert result if set
+0299   1B2D           01018         btfsc   LFSR_0, 6
+029A   09AC           01019         comf    temp, f
+                      01020         ; test bit invert result if set
+029B   1BAD           01021         btfsc   LFSR_0, 7
+029C   09AC           01022         comf    temp, f
+                      01023         
+                      01024         ; set carry bit
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 21
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+029D   1003           01025         bcf             STATUS, C
+029E   182C           01026         btfsc   temp, 0
+029F   1403           01027         bsf             STATUS, C
+                      01028         
+                      01029         ; rotat the bits 
+02A0   0CB0           01030         rrf             LFSR_3, F
+02A1   0CAF           01031         rrf             LFSR_2, F
+02A2   0CAE           01032         rrf             LFSR_1, F
+02A3   0CAD           01033         rrf             LFSR_0, F
+02A4   0BB1           01034         decfsz  LFSR_count, F
+02A5   2???           01035         goto    cycle_lfsr_loop
+02A6   082D           01036         movf    LFSR_0, W
+02A7   0008           01037         return
+                      01038         
+                      01039 ;################################################################################
+02A8                  01040 _delay
+02A8   00AC           01041         movwf   temp
+02A9   019A           01042         clrf    TMR2
+02AA   1091           01043         bcf             PIR1, TMR2IF
+02AB                  01044 delay_loop1
+02AB   1C8E           01045         btfss   PORTC, 1                        ; check if the button was pressed if so skip out of the 
+                            delay loop
+02AC   0008           01046         return                          
+02AD   1C91           01047         btfss   PIR1, TMR2IF
+02AE   2???           01048         goto    delay_loop1
+02AF   1091           01049         bcf             PIR1, TMR2IF
+02B0   0BAC           01050         decfsz  temp, F
+02B1   2???           01051         goto    delay_loop1
+                      01052         
+02B2   0008           01053         return
+                      01054         
+                      01055 ;################################################################################
+02B3                  01056 _pwm_values
+02B3   390F           01057         andlw   0x0F
+02B4   000B           01058         brw             
+02B5   3400           01059         retlw   0x00
+02B6   3401           01060         retlw   0x01
+02B7   3403           01061         retlw   0x03
+02B8   3407           01062         retlw   0x07
+02B9   340B           01063         retlw   0x0B
+02BA   3412           01064         retlw   0x12
+02BB   341E           01065         retlw   0x1E
+02BC   3428           01066         retlw   0x28
+02BD   3432           01067         retlw   0x32
+02BE   3441           01068         retlw   0x41
+02BF   3450           01069         retlw   0x50
+02C0   3464           01070         retlw   0x64
+02C1   347D           01071         retlw   0x7D
+02C2   34A0           01072         retlw   0xA0
+02C3   34C8           01073         retlw   0xC8
+02C4   34FF           01074         retlw   0xFF
+                      01075         
+02C5   0008           01076         return
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 22
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      01077 
+                      01078         
+                      01079 ; stuff in the  code description at the end of the code. 
+02C6   0050 0065 0074 01080         de      CODE_VER_STRING
+       0065 0072 0020 
+       0053 0068 0061 
+       0062 0069 006E 
+       006F 0020 0032 
+       0031 004A 0075 
+       006C 0032 0030 
+       0031 0039 0020 
+       0063 006F 0064 
+       0065 0020 0056 
+       0031 0020 0066 
+       006F 0072 0020 
+       0043 0068 0065 
+       0073 0074 006F 
+       0072 006F 0020 
+       0062 0079 0020 
+       0054 007
+                      01081         
+                      01082         ;### end of program ###
+3F84 1FFF             01083         end     
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 23
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ACKDT                             00000005
+ACKEN                             00000004
+ACKSTAT                           00000006
+ACKTIM                            00000007
+ADCON0                            0000009D
+ADCON1                            0000009E
+ADCON2                            0000009F
+ADFM                              00000007
+ADFVR0                            00000000
+ADFVR1                            00000001
+ADGO                              00000001
+ADIE                              00000006
+ADIF                              00000006
+ADON                              00000000
+ADPREF0                           00000000
+ADPREF1                           00000001
+ADRES                             0000009B
+ADRESH                            0000009C
+ADRESL                            0000009B
+AHEN                              00000001
+ANSA0                             00000000
+ANSA1                             00000001
+ANSA2                             00000002
+ANSA4                             00000004
+ANSC0                             00000000
+ANSC1                             00000001
+ANSC2                             00000002
+ANSC3                             00000003
+ANSELA                            0000018C
+ANSELC                            0000018E
+APFCON                            0000011D
+BCL1IE                            00000003
+BCL1IF                            00000003
+BF                                00000000
+BOEN                              00000004
+BORCON                            00000116
+BORFS                             00000006
+BORRDY                            00000000
+BSR                               00000008
+BSR0                              00000000
+BSR1                              00000001
+BSR2                              00000002
+BSR3                              00000003
+BSR4                              00000004
+BSR_ICDSHAD                       00000FE3
+BSR_SHAD                          00000FE6
+C                                 00000000
+C1HYS                             00000001
+C1IE                              00000005
+C1IF                              00000005
+C1INTN                            00000006
+C1INTP                            00000007
+C1NCH0                            00000000
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 24
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+C1NCH1                            00000001
+C1NCH2                            00000002
+C1OE                              00000005
+C1ON                              00000007
+C1OUT                             00000006
+C1PCH0                            00000004
+C1PCH1                            00000005
+C1POL                             00000004
+C1SP                              00000002
+C1SYNC                            00000000
+C2HYS                             00000001
+C2IE                              00000006
+C2IF                              00000006
+C2INTN                            00000006
+C2INTP                            00000007
+C2NCH0                            00000000
+C2NCH1                            00000001
+C2NCH2                            00000002
+C2OE                              00000005
+C2ON                              00000007
+C2OUT                             00000006
+C2PCH0                            00000004
+C2PCH1                            00000005
+C2POL                             00000004
+C2SP                              00000002
+C2SYNC                            00000000
+CDAFVR0                           00000002
+CDAFVR1                           00000003
+CFGS                              00000006
+CHS0                              00000002
+CHS1                              00000003
+CHS2                              00000004
+CHS3                              00000005
+CHS4                              00000006
+CKE                               00000006
+CKP                               00000004
+CLC1CON                           00000F10
+CLC1GLS0                          00000F14
+CLC1GLS1                          00000F15
+CLC1GLS2                          00000F16
+CLC1GLS3                          00000F17
+CLC1IE                            00000000
+CLC1IF                            00000000
+CLC1POL                           00000F11
+CLC1SEL                           00000001
+CLC1SEL0                          00000F12
+CLC1SEL1                          00000F13
+CLC2CON                           00000F18
+CLC2GLS0                          00000F1C
+CLC2GLS1                          00000F1D
+CLC2GLS2                          00000F1E
+CLC2GLS3                          00000F1F
+CLC2IE                            00000001
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 25
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+CLC2IF                            00000001
+CLC2POL                           00000F19
+CLC2SEL0                          00000F1A
+CLC2SEL1                          00000F1B
+CLCDATA                           00000F0F
+CM1CON0                           00000111
+CM1CON1                           00000112
+CM2CON0                           00000113
+CM2CON1                           00000114
+CMOUT                             00000115
+CODE_VER_STRING                   "Peter Shabino 21Jul2019 code V1 for Chestoro by TwinkleTwinkie www.wire2wire.org"
+CWG1CON0                          00000693
+CWG1CON1                          00000694
+CWG1CON2                          00000695
+CWG1DBF                           00000692
+CWG1DBF0                          00000000
+CWG1DBF1                          00000001
+CWG1DBF2                          00000002
+CWG1DBF3                          00000003
+CWG1DBF4                          00000004
+CWG1DBF5                          00000005
+CWG1DBR                           00000691
+CWG1DBR0                          00000000
+CWG1DBR1                          00000001
+CWG1DBR2                          00000002
+CWG1DBR3                          00000003
+CWG1DBR4                          00000004
+CWG1DBR5                          00000005
+C_SHAD                            00000000
+D1N                               00000000
+D1S0                              00000000
+D1S1                              00000001
+D1S2                              00000002
+D1T                               00000001
+D2N                               00000002
+D2S0                              00000004
+D2S1                              00000005
+D2S2                              00000006
+D2T                               00000003
+D3N                               00000004
+D3S0                              00000000
+D3S1                              00000001
+D3S2                              00000002
+D3T                               00000005
+D4N                               00000006
+D4S0                              00000004
+D4S1                              00000005
+D4S2                              00000006
+D4T                               00000007
+DACCON0                           00000118
+DACCON1                           00000119
+DACEN                             00000007
+DACOE1                            00000005
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 26
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+DACOE2                            00000004
+DACPSS                            00000002
+DACR0                             00000000
+DACR1                             00000001
+DACR2                             00000002
+DACR3                             00000003
+DACR4                             00000004
+DC                                00000001
+DC_SHAD                           00000001
+DHEN                              00000000
+D_NOT_A                           00000005
+F                                 00000001
+FREE                              00000004
+FSR0                              00000004
+FSR0H                             00000005
+FSR0H_SHAD                        00000FE9
+FSR0L                             00000004
+FSR0L_SHAD                        00000FE8
+FSR1                              00000006
+FSR1H                             00000007
+FSR1H_SHAD                        00000FEB
+FSR1L                             00000006
+FSR1L_SHAD                        00000FEA
+FVRCON                            00000117
+FVREN                             00000007
+FVRRDY                            00000006
+G1ARSEN                           00000006
+G1ASDLA0                          00000004
+G1ASDLA1                          00000005
+G1ASDLB0                          00000006
+G1ASDLB1                          00000007
+G1ASDSC1                          00000002
+G1ASDSC2                          00000003
+G1ASDSCLC2                        00000000
+G1ASDSFLT                         00000001
+G1ASE                             00000007
+G1CS0                             00000000
+G1EN                              00000007
+G1IS0                             00000000
+G1IS1                             00000001
+G1IS2                             00000002
+G1OEA                             00000005
+G1OEB                             00000006
+G1POL                             00000000
+G1POLA                            00000003
+G1POLB                            00000004
+G2POL                             00000001
+G3POL                             00000002
+G4D1N                             00000000
+G4D1T                             00000001
+G4D2N                             00000002
+G4D2T                             00000003
+G4D3N                             00000004
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 27
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+G4D3T                             00000005
+G4D4N                             00000006
+G4D4T                             00000007
+G4POL                             00000003
+GCEN                              00000007
+GIE                               00000007
+GO                                00000001
+GO_NOT_DONE                       00000001
+HFIOFR                            00000004
+HFIOFS                            00000000
+INDF0                             00000000
+INDF1                             00000001
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTF                              00000001
+IOCAF                             00000393
+IOCAF0                            00000000
+IOCAF1                            00000001
+IOCAF2                            00000002
+IOCAF3                            00000003
+IOCAF4                            00000004
+IOCAF5                            00000005
+IOCAN                             00000392
+IOCAN0                            00000000
+IOCAN1                            00000001
+IOCAN2                            00000002
+IOCAN3                            00000003
+IOCAN4                            00000004
+IOCAN5                            00000005
+IOCAP                             00000391
+IOCAP0                            00000000
+IOCAP1                            00000001
+IOCAP2                            00000002
+IOCAP3                            00000003
+IOCAP4                            00000004
+IOCAP5                            00000005
+IOCIE                             00000003
+IOCIF                             00000000
+IRCF0                             00000003
+IRCF1                             00000004
+IRCF2                             00000005
+IRCF3                             00000006
+IRQ_not_tmr0                      0000003F
+IRQ_not_tmr1                      0000004C
+IRQ_tmr0_done                     0000003C
+IRQ_tmr0_pwm_not_zero             00000020
+IRQ_tmr1_not_zero                 00000048
+LATA                              0000010C
+LATA0                             00000000
+LATA1                             00000001
+LATA2                             00000002
+LATA4                             00000004
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 28
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+LATA5                             00000005
+LATC                              0000010E
+LATC0                             00000000
+LATC1                             00000001
+LATC2                             00000002
+LATC3                             00000003
+LATC4                             00000004
+LATC5                             00000005
+LC1D1S0                           00000000
+LC1D1S1                           00000001
+LC1D1S2                           00000002
+LC1D2S0                           00000004
+LC1D2S1                           00000005
+LC1D2S2                           00000006
+LC1D3S0                           00000000
+LC1D3S1                           00000001
+LC1D3S2                           00000002
+LC1D4S0                           00000004
+LC1D4S1                           00000005
+LC1D4S2                           00000006
+LC1EN                             00000007
+LC1G1D1N                          00000000
+LC1G1D1T                          00000001
+LC1G1D2N                          00000002
+LC1G1D2T                          00000003
+LC1G1D3N                          00000004
+LC1G1D3T                          00000005
+LC1G1D4N                          00000006
+LC1G1D4T                          00000007
+LC1G1POL                          00000000
+LC1G2D1N                          00000000
+LC1G2D1T                          00000001
+LC1G2D2N                          00000002
+LC1G2D2T                          00000003
+LC1G2D3N                          00000004
+LC1G2D3T                          00000005
+LC1G2D4N                          00000006
+LC1G2D4T                          00000007
+LC1G2POL                          00000001
+LC1G3D1N                          00000000
+LC1G3D1T                          00000001
+LC1G3D2N                          00000002
+LC1G3D2T                          00000003
+LC1G3D3N                          00000004
+LC1G3D3T                          00000005
+LC1G3D4N                          00000006
+LC1G3D4T                          00000007
+LC1G3POL                          00000002
+LC1G4D1N                          00000000
+LC1G4D1T                          00000001
+LC1G4D2N                          00000002
+LC1G4D2T                          00000003
+LC1G4D3N                          00000004
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 29
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+LC1G4D3T                          00000005
+LC1G4D4N                          00000006
+LC1G4D4T                          00000007
+LC1G4POL                          00000003
+LC1INTN                           00000003
+LC1INTP                           00000004
+LC1MODE0                          00000000
+LC1MODE1                          00000001
+LC1MODE2                          00000002
+LC1OE                             00000006
+LC1OUT                            00000005
+LC1POL                            00000007
+LC2D1S0                           00000000
+LC2D1S1                           00000001
+LC2D1S2                           00000002
+LC2D2S0                           00000004
+LC2D2S1                           00000005
+LC2D2S2                           00000006
+LC2D3S0                           00000000
+LC2D3S1                           00000001
+LC2D3S2                           00000002
+LC2D4S0                           00000004
+LC2D4S1                           00000005
+LC2D4S2                           00000006
+LC2EN                             00000007
+LC2G1D1N                          00000000
+LC2G1D1T                          00000001
+LC2G1D2N                          00000002
+LC2G1D2T                          00000003
+LC2G1D3N                          00000004
+LC2G1D3T                          00000005
+LC2G1D4N                          00000006
+LC2G1D4T                          00000007
+LC2G1POL                          00000000
+LC2G2D1N                          00000000
+LC2G2D1T                          00000001
+LC2G2D2N                          00000002
+LC2G2D2T                          00000003
+LC2G2D3N                          00000004
+LC2G2D3T                          00000005
+LC2G2D4N                          00000006
+LC2G2D4T                          00000007
+LC2G2POL                          00000001
+LC2G3D1N                          00000000
+LC2G3D1T                          00000001
+LC2G3D2N                          00000002
+LC2G3D2T                          00000003
+LC2G3D3N                          00000004
+LC2G3D3T                          00000005
+LC2G3D4N                          00000006
+LC2G3D4T                          00000007
+LC2G3POL                          00000002
+LC2G4D1N                          00000000
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 30
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+LC2G4D1T                          00000001
+LC2G4D2N                          00000002
+LC2G4D2T                          00000003
+LC2G4D3N                          00000004
+LC2G4D3T                          00000005
+LC2G4D4N                          00000006
+LC2G4D4T                          00000007
+LC2G4POL                          00000003
+LC2INTN                           00000003
+LC2INTP                           00000004
+LC2MODE0                          00000000
+LC2MODE1                          00000001
+LC2MODE2                          00000002
+LC2OE                             00000006
+LC2OUT                            00000005
+LC2POL                            00000007
+LCEN                              00000007
+LCINTN                            00000003
+LCINTP                            00000004
+LCMODE0                           00000000
+LCMODE1                           00000001
+LCMODE2                           00000002
+LCOE                              00000006
+LCOUT                             00000005
+LFIOFR                            00000001
+LFSR_0                            0000002D
+LFSR_1                            0000002E
+LFSR_2                            0000002F
+LFSR_3                            00000030
+LFSR_count                        00000031
+LWLO                              00000005
+MAINLOOP                          00000080
+MC1OUT                            00000000
+MC2OUT                            00000001
+MCLC1OUT                          00000000
+MCLC2OUT                          00000001
+N1CKS0                            00000000
+N1CKS1                            00000001
+N1EN                              00000007
+N1OE                              00000006
+N1OUT                             00000005
+N1PFM                             00000000
+N1POL                             00000004
+N1PWS0                            00000005
+N1PWS1                            00000006
+N1PWS2                            00000007
+NCO1ACC                           00000498
+NCO1ACC0                          00000000
+NCO1ACC1                          00000001
+NCO1ACC10                         00000002
+NCO1ACC11                         00000003
+NCO1ACC12                         00000004
+NCO1ACC13                         00000005
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 31
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+NCO1ACC14                         00000006
+NCO1ACC15                         00000007
+NCO1ACC16                         00000000
+NCO1ACC17                         00000001
+NCO1ACC18                         00000002
+NCO1ACC19                         00000003
+NCO1ACC2                          00000002
+NCO1ACC3                          00000003
+NCO1ACC4                          00000004
+NCO1ACC5                          00000005
+NCO1ACC6                          00000006
+NCO1ACC7                          00000007
+NCO1ACC8                          00000000
+NCO1ACC9                          00000001
+NCO1ACCH                          00000499
+NCO1ACCL                          00000498
+NCO1ACCU                          0000049A
+NCO1CLK                           0000049F
+NCO1CON                           0000049E
+NCO1IE                            00000002
+NCO1IF                            00000002
+NCO1INC                           0000049B
+NCO1INC0                          00000000
+NCO1INC1                          00000001
+NCO1INC10                         00000002
+NCO1INC11                         00000003
+NCO1INC12                         00000004
+NCO1INC13                         00000005
+NCO1INC14                         00000006
+NCO1INC15                         00000007
+NCO1INC2                          00000002
+NCO1INC3                          00000003
+NCO1INC4                          00000004
+NCO1INC5                          00000005
+NCO1INC6                          00000006
+NCO1INC7                          00000007
+NCO1INC8                          00000000
+NCO1INC9                          00000001
+NCO1INCH                          0000049C
+NCO1INCL                          0000049B
+NCO1INCU                          0000049D
+NCO1SEL                           00000000
+NOT_BOR                           00000000
+NOT_PD                            00000003
+NOT_POR                           00000001
+NOT_RI                            00000002
+NOT_RMCLR                         00000003
+NOT_RWDT                          00000004
+NOT_T1SYNC                        00000002
+NOT_TO                            00000004
+NOT_WPUEN                         00000007
+OPTION_REG                        00000095
+OSCCON                            00000099
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 32
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+OSCSTAT                           0000009A
+P                                 00000004
+PCIE                              00000006
+PCL                               00000002
+PCLATH                            0000000A
+PCLATH_SHAD                       00000FE7
+PCON                              00000096
+PEIE                              00000006
+PEN                               00000002
+PIE1                              00000091
+PIE2                              00000092
+PIE3                              00000093
+PIR1                              00000011
+PIR2                              00000012
+PIR3                              00000013
+PMADR                             00000191
+PMADRH                            00000192
+PMADRL                            00000191
+PMCON1                            00000195
+PMCON2                            00000196
+PMDAT                             00000193
+PMDATH                            00000194
+PMDATL                            00000193
+POL                               00000007
+PORTA                             0000000C
+PORTC                             0000000E
+PR2                               0000001B
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+PWM1CON                           00000613
+PWM1CON0                          00000613
+PWM1DCH                           00000612
+PWM1DCH0                          00000000
+PWM1DCH1                          00000001
+PWM1DCH2                          00000002
+PWM1DCH3                          00000003
+PWM1DCH4                          00000004
+PWM1DCH5                          00000005
+PWM1DCH6                          00000006
+PWM1DCH7                          00000007
+PWM1DCL                           00000611
+PWM1DCL0                          00000006
+PWM1DCL1                          00000007
+PWM1EN                            00000007
+PWM1OE                            00000006
+PWM1OUT                           00000005
+PWM1POL                           00000004
+PWM2CON                           00000616
+PWM2CON0                          00000616
+PWM2DCH                           00000615
+PWM2DCH0                          00000000
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 33
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PWM2DCH1                          00000001
+PWM2DCH2                          00000002
+PWM2DCH3                          00000003
+PWM2DCH4                          00000004
+PWM2DCH5                          00000005
+PWM2DCH6                          00000006
+PWM2DCH7                          00000007
+PWM2DCL                           00000614
+PWM2DCL0                          00000006
+PWM2DCL1                          00000007
+PWM2EN                            00000007
+PWM2OE                            00000006
+PWM2OUT                           00000005
+PWM2POL                           00000004
+PWM3CON                           00000619
+PWM3CON0                          00000619
+PWM3DCH                           00000618
+PWM3DCH0                          00000000
+PWM3DCH1                          00000001
+PWM3DCH2                          00000002
+PWM3DCH3                          00000003
+PWM3DCH4                          00000004
+PWM3DCH5                          00000005
+PWM3DCH6                          00000006
+PWM3DCH7                          00000007
+PWM3DCL                           00000617
+PWM3DCL0                          00000006
+PWM3DCL1                          00000007
+PWM3EN                            00000007
+PWM3OE                            00000006
+PWM3OUT                           00000005
+PWM3POL                           00000004
+PWM4CON                           0000061C
+PWM4CON0                          0000061C
+PWM4DCH                           0000061B
+PWM4DCH0                          00000000
+PWM4DCH1                          00000001
+PWM4DCH2                          00000002
+PWM4DCH3                          00000003
+PWM4DCH4                          00000004
+PWM4DCH5                          00000005
+PWM4DCH6                          00000006
+PWM4DCH7                          00000007
+PWM4DCL                           0000061A
+PWM4DCL0                          00000006
+PWM4DCL1                          00000007
+PWM4EN                            00000007
+PWM4OE                            00000006
+PWM4OUT                           00000005
+PWM4POL                           00000004
+PWM_DELAY                         0000007D
+RA0                               00000000
+RA1                               00000001
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 34
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+RA2                               00000002
+RA3                               00000003
+RA4                               00000004
+RA5                               00000005
+RC0                               00000000
+RC1                               00000001
+RC2                               00000002
+RC3                               00000003
+RC4                               00000004
+RC5                               00000005
+RCEN                              00000003
+RD                                00000000
+RSEN                              00000001
+R_NOT_W                           00000002
+S                                 00000003
+SBCDE                             00000002
+SBOREN                            00000007
+SCIE                              00000005
+SCS0                              00000000
+SCS1                              00000001
+SDAHT                             00000003
+SDOSEL                            00000005
+SEN                               00000000
+SMP                               00000007
+SSP1ADD                           00000212
+SSP1BUF                           00000211
+SSP1CON1                          00000215
+SSP1CON2                          00000216
+SSP1CON3                          00000217
+SSP1IE                            00000003
+SSP1IF                            00000003
+SSP1MSK                           00000213
+SSP1STAT                          00000214
+SSPADD                            00000212
+SSPBUF                            00000211
+SSPCON                            00000215
+SSPCON1                           00000215
+SSPCON2                           00000216
+SSPCON3                           00000217
+SSPEN                             00000005
+SSPM0                             00000000
+SSPM1                             00000001
+SSPM2                             00000002
+SSPM3                             00000003
+SSPMSK                            00000213
+SSPOV                             00000006
+SSPSTAT                           00000214
+SSSEL                             00000004
+START                             0000004D
+START_ANIMATION                   0000026C
+STATUS                            00000003
+STATUS_SHAD                       00000FE4
+STKOVF                            00000007
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 35
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+STKPTR                            00000FED
+STKUNF                            00000006
+SWDTEN                            00000000
+T0CS                              00000005
+T0IE                              00000005
+T0IF                              00000002
+T0SE                              00000004
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000018
+T1GCON                            00000019
+T1GGO_NOT_DONE                    00000003
+T1GPOL                            00000006
+T1GSEL                            00000003
+T1GSPM                            00000004
+T1GSS0                            00000000
+T1GSS1                            00000001
+T1GTM                             00000005
+T1GVAL                            00000002
+T1OSCEN                           00000003
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             0000001C
+T2OUTPS0                          00000003
+T2OUTPS1                          00000004
+T2OUTPS2                          00000005
+T2OUTPS3                          00000006
+TMR0                              00000015
+TMR0CS                            00000005
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR0SE                            00000004
+TMR1                              00000016
+TMR1CS0                           00000006
+TMR1CS1                           00000007
+TMR1GE                            00000007
+TMR1GIE                           00000007
+TMR1GIF                           00000007
+TMR1H                             00000017
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1L                             00000016
+TMR1ON                            00000000
+TMR2                              0000001A
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2ON                            00000002
+TOSH                              00000FEF
+TOSL                              00000FEE
+TRIGSEL0                          00000004
+TRIGSEL1                          00000005
+TRIGSEL2                          00000006
+TRIGSEL3                          00000007
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 36
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TRISA                             0000008C
+TRISA0                            00000000
+TRISA1                            00000001
+TRISA2                            00000002
+TRISA3                            00000003
+TRISA4                            00000004
+TRISA5                            00000005
+TRISC                             0000008E
+TRISC0                            00000000
+TRISC1                            00000001
+TRISC2                            00000002
+TRISC3                            00000003
+TRISC4                            00000004
+TRISC5                            00000005
+TSEN                              00000005
+TSRNG                             00000004
+UA                                00000001
+VREGCON                           00000197
+VREGPM                            00000001
+W                                 00000000
+WCOL                              00000007
+WDTCON                            00000097
+WDTPS0                            00000001
+WDTPS1                            00000002
+WDTPS2                            00000003
+WDTPS3                            00000004
+WDTPS4                            00000005
+WPUA                              0000020C
+WPUA0                             00000000
+WPUA1                             00000001
+WPUA2                             00000002
+WPUA3                             00000003
+WPUA4                             00000004
+WPUA5                             00000005
+WR                                00000001
+WREG                              00000009
+WREG_SHAD                         00000FE5
+WREN                              00000002
+WRERR                             00000003
+Z                                 00000002
+Z_SHAD                            00000002
+_BOREN_NSLEEP                     00003DFF
+_BOREN_OFF                        000039FF
+_BOREN_ON                         00003FFF
+_BOREN_SBODEN                     00003BFF
+_BORV_HI                          00003BFF
+_BORV_LO                          00003FFF
+_CLKOUTEN_OFF                     00003FFF
+_CLKOUTEN_ON                      000037FF
+_CONFIG1                          00008007
+_CONFIG2                          00008008
+_CP_OFF                           00003FFF
+_CP_ON                            00003F7F
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 37
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_CYCLE_LFSR                       00000292
+_DEVID1                           00008006
+_FOSC_ECH                         00003FFF
+_FOSC_ECL                         00003FFD
+_FOSC_ECM                         00003FFE
+_FOSC_INTOSC                      00003FFC
+_IDLOC0                           00008000
+_IDLOC1                           00008001
+_IDLOC2                           00008002
+_IDLOC3                           00008003
+_LPBOR_OFF                        00003FFF
+_LPBOR_ON                         000037FF
+_LVP_OFF                          00001FFF
+_LVP_ON                           00003FFF
+_MCLRE_OFF                        00003FBF
+_MCLRE_ON                         00003FFF
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FDF
+_STVREN_OFF                       00003DFF
+_STVREN_ON                        00003FFF
+_WDTE_NSLEEP                      00003FF7
+_WDTE_OFF                         00003FE7
+_WDTE_ON                          00003FFF
+_WDTE_SWDTEN                      00003FEF
+_WRT_ALL                          00003FFC
+_WRT_BOOT                         00003FFE
+_WRT_HALF                         00003FFD
+_WRT_OFF                          00003FFF
+__16F1503                         00000001
+_delay                            000002A8
+_pwm_values                       000002B3
+animation_blink                   0000021B
+animation_eye_bobble              00000165
+animation_lip_lick_left           000001DD
+animation_lip_lick_right          000001FC
+animation_lip_piano               00000195
+animation_smile_in_out            00000233
+animation_sparkles                000000C7
+animation_talk                    000000F3
+blink_delay                       0000022E
+blink_norm                        0000022B
+blink_ok                          00000226
+button                            00000033
+counter1                          0000002B
+counter2                          00000032
+cycle_lfsr_loop                   00000294
+delay_h                           0000002A
+delay_l                           00000029
+delay_loop1                       000002AB
+eye_bobble_loop                   0000016E
+eye_bobble_loop1                  00000170
+eye_bobble_loop2                  00000179
+eye_bobble_loop3                  00000182
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 38
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+eye_bobble_loop4                  0000018B
+eye_bobble_normal                 0000016A
+eye_out_loop                      00000235
+eye_out_loop1                     00000248
+eye_out_loop1_norm                00000244
+eyes_in_loop                      00000289
+gtemp                             00000070
+init_bank0_loop                   0000005F
+left_eye                          00000021
+mainloop_button_chk               00000083
+mainloop_button_delay             00000084
+mainloop_delay                    0000009E
+mainloop_no_button                0000009B
+mode                              00000035
+next_animation                    00000034
+piano_in_loop                     000001A9
+piano_in_loop1                    000001BC
+piano_in_loop2                    000001D1
+piano_loop                        000001B0
+piano_normal                      0000019A
+piano_out_loop                    000001A0
+piano_out_loop1                   000001B2
+piano_out_loop2                   000001C6
+piano_start                       0000019E
+pwm_cnt                           00000028
+right_eye                         00000020
+smile_in_loop                     0000026E
+smile_in_loop1                    00000282
+smile_in_loop1_norm               0000027E
+smile_out_loop                    0000024F
+smile_out_loop1                   00000267
+smile_out_loop1_norm              00000264
+sparkles_loop                     000000CE
+sparkles_normal                   000000CC
+talk_delay                        0x03
+talk_loop                         000000FC
+talk_loop1                        000000FE
+talk_loop2                        0000010C
+talk_loop3                        00000120
+talk_loop4                        0000012B
+talk_loop5                        00000139
+talk_loop6                        00000151
+talk_normal                       000000F8
+temp                              0000002C
+tooth1                            00000022
+tooth2                            00000023
+tooth3                            00000024
+tooth4                            00000025
+tooth5                            00000026
+
+MPASM 5.84       TWINKLETWINKIE_CHESTORO.ASM   8-1-2019  22:40:50         PAGE 39
+
+
+
+
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :     9 reported,     0 suppressed
+
+
