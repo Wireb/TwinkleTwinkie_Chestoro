@@ -1,5 +1,6 @@
 # Twinkle Twinkie's Chestoro Firmware
 This is the firmware for Mr TwinkleTwinkie's Chestoro SAO.
+
 The bulk of this code is a recycle from my Mad Cat Backpack project with the addition of the animation select button. 
  
 License is MIT so do what you want with it just don't litigate me. 
@@ -19,8 +20,8 @@ Current animations:
 Animations are NOT weighted evenly. Blinking has a higher probability then the others while sparkles has the least. 
 
 The animation button does 2 things 
-1.) when held down it aborts any running delays. This let's the micro get out of any long animation loops quickly. (You will see the leds flicker until it is back at the start of the main loop.)
-2.) When released it will pick the next animation off a fixed list with fixed nominal delays. 
+1. when held down it aborts any running delays. This let's the micro get out of any long animation loops quickly. (You will see the leds flicker until it is back at the start of the main loop.)
+2. When released it will pick the next animation off a fixed list with fixed nominal delays. 
 
 The main reason for this button is a easy way to flip through all the animations to see them and a way to force some activity when it hits a long idle loop. (basically a show off button)  
 
@@ -29,13 +30,16 @@ Total code space use is ~39% so plenty of space for more animations if wanted.
 
 ## MplabX
 This is a mplabX 5.20 project. All programming / debug was done with a PicKit4.
+
 The firmware source is all contained in .\MplabX\TwinkleTwinkie_Chestoro\TwinkleTwinkie_Chestoro.asm 
+
 If you just want to program a backpack using .\MplabX\TwinkleTwinkie_Chestoro\TwinkleTwinkie_Chestoro.X\dist\default\production\TwinkleTwinkie_Chestoro.X.production.hex in microchip IPE is the fastest way. 
 
 ## Documentation
 There is not much for documentation on this one. 
 
 SAO can be purchased from TwinkleTwinkie here:
+
 https://www.tindie.com/products/twinkletwinkie/twinkletwinkies-chestoro-badge-sao/
 
 You will need a programing adapter to go from the PicKit to the SAO header. 
